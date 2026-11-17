@@ -34,13 +34,14 @@ BORDER_COLOR = (93, 216, 228)
 APPLE_COLOR = (255, 0, 0)
 # Цвет змейки.
 SNAKE_COLOR = (0, 255, 0)
+# Ошибка
+ERROR_COLOR = (255, 0, 255)
 
 # Скорость движения змейки.
 SPEED = 10
 
 # Центр игрового поля.
-START_X = (GRID_WIDTH // 2) * GRID_SIZE
-START_Y = (GRID_HEIGHT // 2) * GRID_SIZE
+CENTER = ((GRID_WIDTH // 2) * GRID_SIZE, (GRID_HEIGHT // 2) * GRID_SIZE)
 
 screen = pg.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 
@@ -62,9 +63,9 @@ class GameObject:
     метод draw в дочерних классах.
     """
 
-    def __init__(self, color=None):
-        self.position = START_X, START_Y
-        self.color = color or (255, 0, 255)
+    def __init__(self, color=ERROR_COLOR):
+        self.position = CENTER
+        self.color = color
         self.body_color = self.color
 
     def draw_rect(self, position, color=None):
@@ -77,18 +78,17 @@ class GameObject:
         Эффект:
         Рисует прямоугольник на глобальном экране screen.
         """
-        if color is None:
-            color = self.body_color
-        rect = pg.Rect(position[0], position[1], GRID_SIZE, GRID_SIZE)
+        color = color or self.body_color
+        rect = pg.Rect(*position, GRID_SIZE, GRID_SIZE)
         pg.draw.rect(screen, color, rect)
         pg.draw.rect(screen, BORDER_COLOR, rect, 1)
 
     def draw(self):
         """Функция выводит сообщение об ошибке,
-        если фунция draw пропущена в дочерних классах
+        если фунция draw пропущена в дочерних классах.
         """
         raise NotImplementedError(
-            'Метод draw должен быть реализован в дочернем классе'
+            'Метод draw не реализован в классе Apple или Snake'
         )
 
 
@@ -110,28 +110,26 @@ class Apple(GameObject):
     draw(): отрисовывает яблоко.
     """
 
-    def __init__(self, forbidden_positions=None):
+    def __init__(self):
         super().__init__(APPLE_COLOR)
-        self.forbidden_positions = forbidden_positions or [self.position]
-        self.randomize_position()
 
-    def randomize_position(self):
+    def randomize_position(self, forbidden_positions):
         """Генерация случайной позиции для яблока.
 
         Метод подбирает случайные координаты с учетом ограничений,
         указанных в self.forbidden_positions.
         """
         while True:
-            x = randint(0, GRID_WIDTH - 1) * GRID_SIZE
-            y = randint(0, GRID_HEIGHT - 1) * GRID_SIZE
-            position = (x, y)
-            if position not in self.forbidden_positions:
-                self.position = position
+            self.position = (
+                randint(0, GRID_WIDTH - 1) * GRID_SIZE,
+                randint(0, GRID_HEIGHT - 1) * GRID_SIZE
+            )
+            if self.position not in forbidden_positions:
                 return
 
     def draw(self):
         """Отрисовывание яблока."""
-        self.draw_rect(self.position, self.color)
+        self.draw_rect(self.position, APPLE_COLOR)
 
 
 class Snake(GameObject):
@@ -149,8 +147,10 @@ class Snake(GameObject):
     last (tuple | None): координаты последнего удаленного сегмента.
 
     Методы:
-    get_head_position(): получает координаты головы змейки.
+    get_head_position(): декоратор, возвращает координаты головы змейки.
+    update_direction(): функция задает новое направление движения змейки.
     move(): обновляет позицию змейки, добавляет голову, удаляет шлейф.
+    eat(): обновляет длину змейки при поедании яблока.
     draw(): отрисовывание текущей позиции головы змейки.
     update_direction(): применяет новое направление движения змейки.
     check_self_collision(): проверяет движение змейки на столкновение с собой.
@@ -165,11 +165,15 @@ class Snake(GameObject):
         self.next_direction = RIGHT
         self.last = None
 
+    @property
     def get_head_position(self):
-        """Функция выделяет голову змейки
-        и возвращает ее координаты
-        """
+        """Функция возвращает координаты головы змейки"""
         return self.positions[0]
+
+    def update_direction(self):
+        """Функция применяет новое направление движения змейки"""
+        if self.next_direction:
+            self.direction = self.next_direction
 
     def move(self):
         """Метод обновляет позицию змейки в заданном направлении.
@@ -179,16 +183,15 @@ class Snake(GameObject):
 
         Эффекты:
         Обновляет self.positions,
-        Обновляет self.last,
+        Обновляет self.last.
         """
-        head_x, head_y = self.positions[0]
+        head_x, head_y = self.get_head_position
         step_x, step_y = self.direction
 
         new_x = (head_x + step_x * GRID_SIZE) % SCREEN_WIDTH
         new_y = (head_y + step_y * GRID_SIZE) % SCREEN_HEIGHT
         new_head = (new_x, new_y)
 
-        self.last = self.positions[-1]
         self.positions.insert(0, new_head)
 
         if len(self.positions) > self.length:
@@ -196,26 +199,29 @@ class Snake(GameObject):
         else:
             self.last = None
 
-    def draw(self):
-        """Метод отрисовывает голову змейки."""
-        self.draw_rect(self.positions[0], self.color)
-
-    def update_direction(self):
-        """Функция применяет новое направление движения змейки"""
-        if self.next_direction:
-            self.direction = self.next_direction
+    def eat(self):
+        """Метод реализует функцию поедания: увеличивает тело змейки"""
+        self.length += 1
 
     def check_self_collision(self):
         """Метод проверяет змейку на столкновение со своим телом"""
-        head = self.positions[0]
+        head = self.get_head_position
         return head in self.positions[1:]
+
+    def draw(self):
+        """Метод отрисовывает голову змейки."""
+        if self.last is not None:
+            rect = pg.Rect(self.last[0], self.last[1], GRID_SIZE, GRID_SIZE)
+            pg.draw.rect(screen, BOARD_BACKGROUND_COLOR, rect)
+
+        self.draw_rect(self.get_head_position, SNAKE_COLOR)
 
     def reset(self):
         """Сброс змейки в начальное состояние:
         положение в центре поля, длина 1 сегмент.
         """
         self.length = 1
-        self.positions = [self.position]
+        self.positions = CENTER
         self.direction = RIGHT
         self.next_direction = RIGHT
         self.last = None
@@ -247,7 +253,7 @@ def main():
     pg.init()
 
     snake = Snake()
-    apple = Apple(snake.positions)
+    apple = Apple()
 
     running = True
     while running:
@@ -255,25 +261,20 @@ def main():
             running = False
             break
 
+        snake.update_direction()
         snake.move()
 
         if snake.check_self_collision():
             screen.fill(BOARD_BACKGROUND_COLOR)
             snake.reset()
-            apple = Apple(snake.positions)
-            continue
+            apple.randomize_position(snake.positions)
 
-        if snake.positions[0] == apple.position:
-            snake.length += 1
-            apple = Apple(snake.positions)
-
-        if snake.last is not None:
-            rect = pg.Rect(snake.last[0], snake.last[1], GRID_SIZE, GRID_SIZE)
-            pg.draw.rect(screen, BOARD_BACKGROUND_COLOR, rect)
-
-        snake.draw_rect(snake.positions[0], SNAKE_COLOR)
+        if snake.get_head_position == apple.position:
+            snake.eat()
+            apple.randomize_position(snake.positions)
 
         apple.draw()
+        snake.draw()
         pg.display.flip()
         clock.tick(SPEED)
 
