@@ -65,8 +65,7 @@ class GameObject:
 
     def __init__(self, color=ERROR_COLOR):
         self.position = CENTER
-        self.color = color
-        self.body_color = self.color
+        self.body_color = color
 
     def draw_rect(self, position, color=None):
         """Отрисовка одного блока игрового объекта.
@@ -102,7 +101,6 @@ class Apple(GameObject):
     Аргументы:
     forbidden_positions (list): список координат,
     где яблоко не может появиться.
-    position (tuple): координаты яблока.
 
     Методы:
     randomize_position(): подбирает случайные координаты для яблока
@@ -110,8 +108,9 @@ class Apple(GameObject):
     draw(): отрисовывает яблоко.
     """
 
-    def __init__(self):
+    def __init__(self, forbidden_positions=None):
         super().__init__(APPLE_COLOR)
+        self.randomize_position(forbidden_positions or [])
 
     def randomize_position(self, forbidden_positions):
         """Генерация случайной позиции для яблока.
@@ -119,13 +118,12 @@ class Apple(GameObject):
         Метод подбирает случайные координаты с учетом ограничений,
         указанных в self.forbidden_positions.
         """
-        while True:
+        while self.position in forbidden_positions:
             self.position = (
                 randint(0, GRID_WIDTH - 1) * GRID_SIZE,
                 randint(0, GRID_HEIGHT - 1) * GRID_SIZE
             )
-            if self.position not in forbidden_positions:
-                return
+            pass
 
     def draw(self):
         """Отрисовывание яблока."""
@@ -221,7 +219,7 @@ class Snake(GameObject):
         положение в центре поля, длина 1 сегмент.
         """
         self.length = 1
-        self.positions = CENTER
+        self.positions = [self.position]
         self.direction = RIGHT
         self.next_direction = RIGHT
         self.last = None
@@ -253,7 +251,7 @@ def main():
     pg.init()
 
     snake = Snake()
-    apple = Apple()
+    apple = Apple(snake.positions)
 
     running = True
     while running:
@@ -268,8 +266,7 @@ def main():
             screen.fill(BOARD_BACKGROUND_COLOR)
             snake.reset()
             apple.randomize_position(snake.positions)
-
-        if snake.get_head_position == apple.position:
+        elif snake.get_head_position == apple.position:
             snake.eat()
             apple.randomize_position(snake.positions)
 
